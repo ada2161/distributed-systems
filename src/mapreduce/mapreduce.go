@@ -11,7 +11,7 @@ import "net/rpc"
 import "net"
 import "bufio"
 import "hash/fnv"
-
+import "sync"
 // import "os/exec"
 
 // A simple mapreduce library with a sequential implementation.
@@ -62,7 +62,8 @@ type MapReduce struct {
 
   // Map of registered workers that you need to keep up to date
   Workers map[string]*WorkerInfo 
-
+  jobsCompleted int
+  syncJobCompleted sync.Mutex
   // add any additional state here
 }
 
@@ -78,6 +79,7 @@ func InitMapReduce(nmap int, nreduce int,
   mr.DoneChannel = make(chan bool)
 
   // initialize any additional state here
+  mr.jobsCompleted = 0 
   return mr
 }
 
@@ -211,12 +213,14 @@ func DoMap(JobNumber int, fileName string,
   }
   file.Close()
   res := Map(string(b))
+  fmt.Printf("%d\n",nreduce)
   // XXX a bit inefficient. could open r files and run over list once
   for r := 0; r < nreduce; r++ {
     file, err = os.Create(ReduceName(fileName, JobNumber, r))
     if err != nil {
       log.Fatal("DoMap: create ", err);
     }
+    fmt.Printf("Created %s \n", ReduceName(fileName, JobNumber, r))
     enc := json.NewEncoder(file)
     for e := res.Front(); e != nil; e = e.Next() {
       kv := e.Value.(KeyValue)
