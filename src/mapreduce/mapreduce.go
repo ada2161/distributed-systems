@@ -11,7 +11,7 @@ import "net/rpc"
 import "net"
 import "bufio"
 import "hash/fnv"
-import "sync"
+// import "sync"
 // import "os/exec"
 
 // A simple mapreduce library with a sequential implementation.
@@ -62,8 +62,10 @@ type MapReduce struct {
 
   // Map of registered workers that you need to keep up to date
   Workers map[string]*WorkerInfo 
-  jobsCompleted int
-  syncJobCompleted sync.Mutex
+  availableWorker chan string
+
+  // jobsCompleted int
+  // syncJobCompleted sync.Mutex
   // add any additional state here
 }
 
@@ -75,11 +77,12 @@ func InitMapReduce(nmap int, nreduce int,
   mr.file = file
   mr.MasterAddress = master
   mr.alive = true
-  mr.registerChannel = make(chan string)
+  mr.registerChannel = make(chan string,1)
   mr.DoneChannel = make(chan bool)
 
   // initialize any additional state here
-  mr.jobsCompleted = 0 
+  mr.Workers = make(map[string]*WorkerInfo)
+  mr.availableWorker = make(chan string)
   return mr
 }
 

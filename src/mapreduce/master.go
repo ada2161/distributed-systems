@@ -12,6 +12,7 @@ type WorkerInfo struct {
 // the number of jobs each work has performed.
 func (mr *MapReduce) KillWorkers() *list.List {
   l := list.New()
+
   for _, w := range mr.Workers {
     DPrintf("DoWork: shutdown %s\n", w.address)
     args := &ShutdownArgs{}
@@ -20,6 +21,7 @@ func (mr *MapReduce) KillWorkers() *list.List {
     if ok == false {
       fmt.Printf("DoWork: RPC %s shutdown error\n", w.address)
     } else {
+      fmt.Printf("DoWork: RPC %s shutdown success\n", w.address)
       l.PushBack(reply.Njobs)
     }
   }
@@ -27,9 +29,8 @@ func (mr *MapReduce) KillWorkers() *list.List {
 }
 
 func (mr *MapReduce) DoJob(work JobType,sync chan string,jobNumber int) {
-	workerAddress :=  <- mr.registerChannel
+	workerAddress :=  <- mr.availableWorker
 	var k int
-    DPrintf("DoJob: map/reduce")
 	switch(work){
 	case Map: 
 	k = mr.nReduce
@@ -52,17 +53,30 @@ func (mr *MapReduce) DoJob(work JobType,sync chan string,jobNumber int) {
 	} else {
 		sync <- "done"
 	}
-	mr.registerChannel <- workerAddress;
+	mr.availableWorker <- workerAddress;
 
 }
 
+func (mr *MapReduce) completeRegister()  {
+
+	for{
+		workerAddress := <-mr.registerChannel
+		var wInfo WorkerInfo
+		wInfo.address = workerAddress
+		mr.Workers[workerAddress] = &wInfo 
+		mr.availableWorker <- workerAddress
+	}
+
+}
 
 func (mr *MapReduce) RunMaster() *list.List {
   // Your code here
+  
+  go mr.completeRegister()
   var work JobType
   work = "Map"
   sync := make(chan string)
-  
+   
   for i:=0;i<mr.nMap;i++ {
 	  go mr.DoJob(work,sync,i)
   }
@@ -71,7 +85,6 @@ func (mr *MapReduce) RunMaster() *list.List {
 	  <-sync
   }
   work = "Reduce"
-  mr.jobsCompleted = 0
   for i:=0; i<mr.nReduce ;i++ {
 	  go mr.DoJob(work,sync,i)
   }
