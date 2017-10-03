@@ -37,20 +37,21 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
   // Checking if its the first ping or not and update the map accordingly
   vs.timeMap[args.Me] = time.Now()
 
-  // Doing it for the first time only
+  // Doing it for the first time only and return instantly to avoid complications
   if vs.currentView.Primary == "" && vs.currentView.Viewnum == 0 {
 	 vs.currentView.Primary = args.Me
 	 vs.currentView.Viewnum = vs.currentView.Viewnum + 1 
 	 vs.viewServiceView = vs.currentView
+	 reply.View = vs.currentView
+	 return nil
   }
-  /*
   //TODO Check if it is the primary and check if it is on the correct view.
   if vs.currentView.Primary == args.Me && vs.IsConsistent==false{
   	vs.currentView = vs.viewServiceView
     vs.IsConsistent = true
   }
   //If backup can be assigned
-  if vs.viewServiceView.Backup == ""  {
+  if vs.viewServiceView.Backup == "" && vs.viewServiceView.Primary != args.Me {
 	 vs.viewServiceView.Backup = args.Me
 	 vs.viewServiceView.Viewnum = vs.viewServiceView.Viewnum + 1 
 	 if vs.IsConsistent ==true{
@@ -58,7 +59,6 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 	 	vs.IsConsistent = false
 	 }
   }
-  */
 
 
   reply.View = vs.currentView
