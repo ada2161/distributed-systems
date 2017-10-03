@@ -17,6 +17,13 @@ type ViewServer struct {
 
 
   // Your declarations here.
+  //To keep the most recent communication time
+  timeMap map[string]time.Time
+  //currentView is the view which has been acknowledged by the primary
+  currentView View
+  //viewServiceView is the viewservices view and will become the view for the primary once the primary acknowledges it is in a view 1 behind the new one 
+  viewServiceView View
+  IsConsistent bool
 }
 
 //
@@ -25,7 +32,39 @@ type ViewServer struct {
 func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 
   // Your code here.
+  //When a ping is recieved we do the following:
+  //store the time it is recieved for the server by
+  // Checking if its the first ping or not and update the map accordingly
+  vs.timeMap[args.Me] = time.Now()
 
+  // Doing it for the first time only
+  if vs.currentView.Primary == "" && vs.currentView.Viewnum == 0 {
+	 vs.currentView.Primary = args.Me
+	 vs.currentView.Viewnum = vs.currentView.Viewnum + 1 
+	 vs.viewServiceView = vs.currentView
+  }
+  /*
+  //TODO Check if it is the primary and check if it is on the correct view.
+  if vs.currentView.Primary == args.Me && vs.IsConsistent==false{
+  	vs.currentView = vs.viewServiceView
+    vs.IsConsistent = true
+  }
+  //If backup can be assigned
+  if vs.viewServiceView.Backup == ""  {
+	 vs.viewServiceView.Backup = args.Me
+	 vs.viewServiceView.Viewnum = vs.viewServiceView.Viewnum + 1 
+	 if vs.IsConsistent ==true{
+	 	vs.currentView = vs.viewServiceView
+	 	vs.IsConsistent = false
+	 }
+  }
+  */
+
+
+  reply.View = vs.currentView
+  // fmt.Println(reply.View.Primary)  
+  // fmt.Println(reply.View.Primary)  
+  
   return nil
 }
 
@@ -33,9 +72,8 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 // server Get() RPC handler.
 //
 func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
-
   // Your code here.
-
+  reply.View = vs.currentView 
   return nil
 }
 
@@ -43,7 +81,7 @@ func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 //
 // tick() is called once per PingInterval; it should notice
 // if servers have died or recovered, and change the view
-// accordingly.
+// accordingly. It should also update the map of available workers in the same way.
 //
 func (vs *ViewServer) tick() {
 
@@ -65,6 +103,12 @@ func StartServer(me string) *ViewServer {
   vs.me = me
   // Your vs.* initializations here.
 
+  vs.timeMap = make(map[string]time.Time)
+  vs.currentView.Primary = ""
+  vs.currentView.Backup = ""
+  vs.currentView.Viewnum = 0
+  vs.viewServiceView = vs.currentView
+  vs.IsConsistent = true
   // tell net/rpc about our RPC server and handlers.
   rpcs := rpc.NewServer()
   rpcs.Register(vs)
