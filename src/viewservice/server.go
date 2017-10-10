@@ -53,8 +53,6 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 
    if vs.currentView.Primary == args.Me && args.Viewnum == 0 {
 	 vs.makeNewPrimary()
-	 // reply.View = vs.viewServiceView
-	 // return nil
    }
 
   // //TODO Check if not consistent and view is different 
@@ -132,7 +130,6 @@ func (vs *ViewServer) tick() {
 		currentTime := time.Now()
 		currentT := currentTime.UnixNano()
 		elapsedTimeInMilli := (currentT-lastPing) 
-		//Check if conversion works
 		if(elapsedTimeInMilli > (DeadPings * int64(PingInterval))){
 			delete(vs.timeMap, server)
 			if(server == vs.currentView.Primary && vs.IsConsistent == true){

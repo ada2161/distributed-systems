@@ -1,7 +1,6 @@
 package pbservice
 
 import "hash/fnv"
-
 const (
   OK = "OK"
   ErrNoKey = "ErrNoKey"
@@ -17,6 +16,8 @@ type PutArgs struct {
 
   // Field names must start with capital letters,
   // otherwise RPC will break.
+
+  Nrand int64
 }
 
 type PutReply struct {
@@ -36,6 +37,17 @@ type GetReply struct {
 
 
 // Your RPC definitions here.
+
+type SyncDB struct {
+	StoredValues map[string] string
+	SuccesfulOps map[int64] string
+	Nrand int64
+}
+
+type SyncDBreply struct {
+  Err Err
+  Value string
+}
 
 func hash(s string) uint32 {
   h := fnv.New32a()

@@ -3,11 +3,10 @@ package pbservice
 import "viewservice"
 import "net/rpc"
 import "fmt"
-
 // You'll probably need to uncomment these:
 // import "time"
-// import "crypto/rand"
-// import "math/big"
+import "crypto/rand"
+import "math/big"
 
 
 
@@ -55,7 +54,7 @@ func call(srv string, rpcname string,
     return true
   }
 
-  fmt.Println(err)
+  // fmt.Println(err)
   return false
 }
 
@@ -69,8 +68,24 @@ func call(srv string, rpcname string,
 func (ck *Clerk) Get(key string) string {
 
   // Your code here.
+	  
+  var reply GetReply
+  for ok:=false;ok==false;{
+	  v,_ := ck.vs.Get()
+	  reply.Value = ""
+	  reply.Err = Err("")
+	  var args GetArgs
+	  args.Key = key
+	  ok = call(v.Primary, "PBServer.Get", args, &reply)
+	  if reply.Err !=""{
+		  ok=false
+	  }
+	  if ok == false {         
+		  fmt.Errorf("Get failed")  
+	  } 
 
-  return "???"
+  }
+  return reply.Value
 }
 
 //
@@ -80,13 +95,39 @@ func (ck *Clerk) Get(key string) string {
 func (ck *Clerk) PutExt(key string, value string, dohash bool) string {
 
   // Your code here.
-  return "???"
+  
+  var args PutArgs
+  var reply PutReply
+  args.Key = key
+  args.Value = value
+  args.DoHash = dohash
+  args.Nrand = nrand()  
+  //think about reply being discarded as well
+  for ok:=false;ok==false;{
+	  v,_ := ck.vs.Get()
+	  ok = call(v.Primary, "PBServer.Put", args, &reply)
+	  if ok == false {         
+		  fmt.Errorf("Put failed")  
+		  // fmt.Println("retry put")
+	  } 
+  }
+  return reply.PreviousValue
 }
 
 func (ck *Clerk) Put(key string, value string) {
   ck.PutExt(key, value, false)
 }
+
+
 func (ck *Clerk) PutHash(key string, value string) string {
   v := ck.PutExt(key, value, true)
   return v
+}
+
+
+func nrand() int64 {
+	max := big.NewInt(int64(1) << 62)
+	bigx, _ := rand.Int(rand.Reader, max)
+	x := bigx.Int64()
+	return x
 }

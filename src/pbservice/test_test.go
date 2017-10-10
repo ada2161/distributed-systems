@@ -55,6 +55,7 @@ func TestBasicFail(t *testing.T) {
   ck.Put("111", "v1")
   check(ck, "111", "v1")
 
+
   ck.Put("2", "v2")
   check(ck, "2", "v2")
 
@@ -124,7 +125,7 @@ func TestBasicFail(t *testing.T) {
   time.Sleep(1 * time.Second)
   get_done := false
   go func() {
-    ck.Get("1")
+	ck.Get("1")
     get_done = true
   }()
   time.Sleep(2 * time.Second)
@@ -258,13 +259,11 @@ func TestFailPut(t *testing.T) {
 
   check(ck, "a", "aaa")
   fmt.Printf("  ... Passed\n")
-
   // kill primary, then immediate Put
   fmt.Printf("Test: Put() immediately after primary failure ...\n")
   s1.kill()
   ck.Put("b", "bbb")
   check(ck, "b", "bbb")
-
   for i := 0; i < viewservice.DeadPings * 3; i++ {
     v, _ := vck.Get()
     if v.Viewnum > v2.Viewnum && v.Primary != "" {
@@ -273,7 +272,7 @@ func TestFailPut(t *testing.T) {
     time.Sleep(viewservice.PingInterval)
   }
   time.Sleep(time.Second)
-
+	
   check(ck, "a", "aaa")
   check(ck, "b", "bbb")
   check(ck, "c", "cc")
