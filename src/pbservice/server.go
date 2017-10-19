@@ -38,14 +38,22 @@ type PBServer struct {
   ServerView viewservice.View
   pushDone sync.WaitGroup
   mu sync.Mutex
-  sync map[int64]bool
+  init bool
+  // sync map[int64]bool
 }
 
 func (pb *PBServer) Put(args *PutArgs, reply *PutReply) error {
 	// Your code here.
+	time.Sleep(6 * time.Millisecond)
 	pb.mu.Lock()
 	pb.pushDone.Wait()	
 	pb.pushDone.Add(1)	
+	// if pb.init == false{
+	// 	pb.mu.Unlock()
+	// 	pb.pushDone.Done()
+	// 	reply.Err = "PutError"	
+	// 	return nil
+	// }
 	ans, ok := pb.succesfulOps[args.Nrand]
 	if ok{
 		reply.PreviousValue = ans
@@ -61,43 +69,37 @@ func (pb *PBServer) Put(args *PutArgs, reply *PutReply) error {
 	pb.data[args.Key] = args.Value
 	pb.succesfulOps[args.Nrand] = OldValue
 	reply.PreviousValue = OldValue
+	primary := pb.ServerView.Primary 
+	backup := pb.ServerView.Backup
 	pb.mu.Unlock()
 
-    if pb.ServerView.Backup == ""{
+    if backup == ""{
 		pb.pushDone.Done()
-		// pb.mu.Unlock()
 		return nil
 	}
 
-	if pb.ServerView.Primary == pb.me{
+	if primary == pb.me  {
 		args.DoHash = false
+		var reply PutReply
 		for ok:=false;ok==false;{
-			ok = call(pb.ServerView.Backup, "PBServer.Put", args, &reply)
-			if(pb.ServerView.Backup == ""){
+			backup = pb.ServerView.Backup
+			if(backup == ""){
 				pb.pushDone.Done()
-				// pb.mu.Unlock()
 				return nil
 			}
-			// pb.mu.Unlock()
-			// if(ok==false){
-				// pb.mu.Lock()
-			// }
+			ok = call(backup, "PBServer.Put", args, &reply)
 		}
 		pb.pushDone.Done()
 		return nil
-	}else if pb.ServerView.Backup == pb.me{
-		// pb.data[args.Key] = args.Value
+	}else if backup == pb.me{
 		pb.pushDone.Done()
-		// pb.mu.Unlock()
 		return nil
 	}else{
 		reply.Err = "PutError"	
 		pb.pushDone.Done()
-		// pb.mu.Unlock()
 		return nil 
 	}
 	pb.pushDone.Done()
-	// pb.mu.Unlock()
 	return nil
 }
 
@@ -115,15 +117,13 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 
 func (pb *PBServer) InitNewBackup(primaryData *SyncDB,reply *SyncDBreply) error {
   // Your code here.
-  v,_ := pb.sync[primaryData.Nrand]
-  if v{
-	return nil
-  }
+  pb.mu.Lock()
   pb.data = primaryData.StoredValues
   pb.succesfulOps = primaryData.SuccesfulOps
   reply.Value = "ok"
-  pb.sync[primaryData.Nrand] =true
-  // fmt.Println(primaryData.StoredValues)
+  pb.init = true
+  // fmt.Println("INIT here")
+  pb.mu.Unlock()
   return nil
 }
 
@@ -131,25 +131,25 @@ func (pb *PBServer) InitNewBackup(primaryData *SyncDB,reply *SyncDBreply) error 
 func (pb *PBServer) tick() {
   // Your code here.
   v,_ := pb.vs.Ping(pb.ServerView.Viewnum)	
+  if v.Primary == pb.me && pb.ServerView.Viewnum == 0{
+	  pb.init = true
+  }
+  if v.Primary!=pb.me && v.Backup!=pb.me{
+	pb.init = false
+  }
   if v.Primary == pb.me && v.Backup != pb.ServerView.Backup && v.Backup!=""{
-	  //pb.mu.Lock()   // immediate add to backup will fail as Put will never v.Backup will not update
 	  var reply SyncDBreply
 	  var args SyncDB
 	  pb.mu.Lock()
 	  for ok:=false;ok==false;{
 		  args.StoredValues = pb.data
 		  args.SuccesfulOps = pb.succesfulOps
-		  args.Nrand = nrand()
 		  ok = call(v.Backup,"PBServer.InitNewBackup",args,&reply)
 		  if(pb.ServerView.Backup == ""){
-			pb.mu.Unlock()
 			break
 		  }
-		  pb.mu.Unlock()
-		  if(ok==false){
-			  pb.mu.Lock()
-		  }
 	  }
+	  pb.mu.Unlock()
   }
   pb.ServerView = v
 }
@@ -175,8 +175,7 @@ func StartServer(vshost string, me string) *PBServer {
   pb.ServerView.Backup = ""
   pb.data = make(map[string]string)
   pb.succesfulOps = make(map[int64]string)
-  pb.sync = make(map[int64]bool)
-
+  pb.init = false
 
   rpcs := rpc.NewServer()
   rpcs.Register(pb)

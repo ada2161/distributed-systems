@@ -41,7 +41,6 @@ type GetReply struct {
 type SyncDB struct {
 	StoredValues map[string] string
 	SuccesfulOps map[int64] string
-	Nrand int64
 }
 
 type SyncDBreply struct {

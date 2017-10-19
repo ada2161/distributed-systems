@@ -106,9 +106,12 @@ func (ck *Clerk) PutExt(key string, value string, dohash bool) string {
   for ok:=false;ok==false;{
 	  v,_ := ck.vs.Get()
 	  ok = call(v.Primary, "PBServer.Put", args, &reply)
+	  if reply.Err!=""{
+		ok = false
+		// fmt.Println("retry put")
+	  }
 	  if ok == false {         
 		  fmt.Errorf("Put failed")  
-		  // fmt.Println("retry put")
 	  } 
   }
   return reply.PreviousValue
