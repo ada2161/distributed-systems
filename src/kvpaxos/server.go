@@ -9,6 +9,7 @@ import (
 	"net/rpc"
 	"os"
 	"paxos"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -43,37 +44,56 @@ type KVPaxos struct {
 	px         *paxos.Paxos
 
 	// Your definitions here.
-	kvstore    map[string]string
-	syncedTill int //This is the sequence number till which the kv store is up to date
+	kvstore     map[string]string
+	syncedTill  int              //This is the sequence number till which the kv store is up to date
+	answerStore map[int64]string //This stores the answers to pass unreliable
 }
 
-func (kv *KVPaxos) syncOps(details Op) {
+func (kv *KVPaxos) syncOps(details Op) string {
 	// Need to figure a way of modifying to
 	to := 10 * time.Millisecond
 	kv.mu.Lock()
-	for seq := kv.syncedTill; ; {
-		// to = 10 * time.Millisecond
+	val, ok := kv.answerStore[details.OpId]
+	if ok {
+		fmt.Print("Answer already present")
+		fmt.Println(details.OpId)
+		kv.mu.Unlock()
+		return val
+	}
+	ans := ""
+	for {
+		seq := kv.syncedTill // to = 10 * time.Millisecond
 		decided, value := kv.px.Status(seq)
 		if decided {
+			ans = ""
 			v := value.(Op)
-			fmt.Println(kv.me)
-			fmt.Println(v)
+			fmt.Print("Paxos done for")
+			fmt.Println(kv.syncedTill, seq, v.OpId, kv.kvstore[v.Key])
 			if v.OpType == "Put" {
+				ans = kv.kvstore[v.Key]
 				kv.kvstore[v.Key] = v.Value
-			} else if v.OpType == "PutHash" {
-
+			} else if v.OpType == "Put hash" {
+				ans = kv.kvstore[v.Key]
+				kv.kvstore[v.Key] = strconv.Itoa(int(hash(ans + v.Value)))
+				// kv.kvstore[v.Key] = hash(ans + v.Value)
 			} else if v.OpType == "Get" {
-
+				ans = kv.kvstore[v.Key]
 			}
+			fmt.Print("Adding to store ")
+			kv.answerStore[v.OpId] = ans
+			fmt.Println(kv.answerStore[v.OpId])
 			if details.OpId == v.OpId {
 				break
 			}
+
 			// kv.px.Done(seq)
 			seq++
-			kv.syncedTill += 1
+			kv.syncedTill++
 
 		} else {
 			details.Seq = seq
+			fmt.Print("Start Paxos For")
+			fmt.Println(details.OpId)
 			kv.px.Start(seq, details)
 			time.Sleep(to)
 			if to < 1*time.Second {
@@ -82,8 +102,11 @@ func (kv *KVPaxos) syncOps(details Op) {
 		}
 	}
 	kv.px.Done(kv.syncedTill)
-	kv.syncedTill += 1
+	kv.syncedTill++
+	fmt.Print("Unlocked")
+	fmt.Println(kv.me)
 	kv.mu.Unlock()
+	return ans
 }
 func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 	// Your code here.
@@ -92,8 +115,7 @@ func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 	operationDetails.Key = args.Key
 	operationDetails.Value = ""
 	operationDetails.OpId = args.Nrand
-	kv.syncOps(*operationDetails)
-	reply.Value = kv.kvstore[args.Key]
+	reply.Value = kv.syncOps(*operationDetails)
 	return nil
 }
 
@@ -101,11 +123,15 @@ func (kv *KVPaxos) Put(args *PutArgs, reply *PutReply) error {
 	// Your code here.
 
 	operationDetails := new(Op)
-	operationDetails.OpType = "Put"
+	if args.DoHash == false {
+		operationDetails.OpType = "Put"
+	} else {
+		operationDetails.OpType = "Put hash"
+	}
 	operationDetails.Key = args.Key
 	operationDetails.Value = args.Value
 	operationDetails.OpId = args.Nrand
-	kv.syncOps(*operationDetails)
+	reply.PreviousValue = kv.syncOps(*operationDetails)
 	return nil
 }
 
@@ -134,6 +160,7 @@ func StartServer(servers []string, me int) *KVPaxos {
 
 	// Your initialization code here.
 	kv.kvstore = make(map[string]string)
+	kv.answerStore = make(map[int64]string)
 	kv.syncedTill = 0
 
 	rpcs := rpc.NewServer()

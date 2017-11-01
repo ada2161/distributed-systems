@@ -1,12 +1,13 @@
 package kvpaxos
 
 import (
+	"crypto/rand"
 	"fmt"
 	"math/big"
-	// "math/rand"
+	mrand "math/rand"
 	"net/rpc"
+	"time"
 )
-import "crypto/rand"
 
 func nrand() int64 {
 	max := big.NewInt(int64(1) << 62)
@@ -70,15 +71,27 @@ func (ck *Clerk) Get(key string) string {
 	var args GetArgs
 	args.Key = key
 	args.Nrand = nrand()
+	to := 10 * time.Millisecond
+	fmt.Print("Trying get with id")
+	fmt.Print(args.Nrand)
+	fmt.Print(" On Server ")
+	fmt.Println(ck.servers[0])
+
 	for {
-		for _, server := range ck.servers {
+		k := mrand.Intn(len(ck.servers))
+		for k < len(ck.servers) {
+			// k = 0
 			var reply GetReply
-			ok := call(server, "KVPaxos.Get", args, &reply)
+			ok := call(ck.servers[k], "KVPaxos.Get", args, &reply)
 			if ok {
 				return reply.Value
 			}
+			if to < 10*time.Second {
+				to *= 2
+			}
 
 		}
+		k++
 	}
 }
 
@@ -93,14 +106,31 @@ func (ck *Clerk) PutExt(key string, value string, dohash bool) string {
 	args.Value = value
 	args.DoHash = dohash
 	args.Nrand = nrand()
+	fmt.Print("Trying puthash with id")
+	fmt.Print(args.Nrand)
+	fmt.Print(" On Server ")
+	fmt.Println(ck.servers[0])
+
+	to := 10 * time.Millisecond
 	for {
-		for _, server := range ck.servers {
+		k := mrand.Intn(len(ck.servers))
+		for k < len(ck.servers) {
+			// k = 0
 			var reply PutReply
-			ok := call(server, "KVPaxos.Put", args, &reply)
+			ok := call(ck.servers[k], "KVPaxos.Put", args, &reply)
 			if ok {
+				fmt.Print("Found ans for")
+				fmt.Println(args.Nrand)
 				return reply.PreviousValue
+			} else {
+				fmt.Print("Retrying with id")
+				fmt.Println(args.Nrand)
+			}
+			if to < 10*time.Second {
+				to *= 2
 			}
 
+			k++
 		}
 	}
 	return ""
