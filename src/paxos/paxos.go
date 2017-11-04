@@ -16,7 +16,7 @@ package paxos
 // px.Start(seq int, v interface{}) -- start agreement on new instance
 // px.Status(seq int) (decided bool, v interface{}) -- get info about an instance
 // px.Done(seq int) -- ok to forget all instances <= seq
-// px.Max() int -- highest instance seq known, or -1
+// px.() int -- highest instance seq known, or -1
 // px.Min() int -- instances before this seq have been forgotten
 //
 
@@ -117,6 +117,7 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 	if err != nil {
 		err1 := err.(*net.OpError)
 		if err1.Err != syscall.ENOENT && err1.Err != syscall.ECONNREFUSED {
+			// fmt.Print(time.Now())
 			// fmt.Printf("paxos Dial() failed: %v\n", err1)
 		}
 		return false
@@ -128,6 +129,7 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 		return true
 	}
 
+	// fmt.Print(time.Now())
 	// fmt.Println(err)
 	return false
 }
@@ -224,9 +226,6 @@ func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) error {
 	if isGreater(args.AcceptNo, seqInfo.highestNumberSeen) {
 		seqInfo.highestNumberAccepted = args.AcceptNo
 		seqInfo.valueOfHighestAccepted = args.AcceptValue
-		// if seqInfo.highestSeq < args.AcceptSeq {
-		// 	seqInfo.highestSeq = args.AcceptSeq
-		// }
 		px.stateMap[args.AcceptSeq] = seqInfo
 		reply.AcceptedNo = args.AcceptNo
 		reply.AcceptOk = true
@@ -278,8 +277,10 @@ func (px *Paxos) Start(seq int, v interface{}) {
 
 	px.mu.Lock()
 	if seq < px.minDone {
+		px.mu.Unlock()
 		return
 	}
+
 	var args ProposalArgs
 	seqInfo, ok := px.stateMap[seq]
 	if ok == false {
@@ -293,9 +294,9 @@ func (px *Paxos) Start(seq int, v interface{}) {
 		seqInfo.valueOfHighestAccepted = nil
 		seqInfo.DecidedValue = nil
 	}
-	// incSeqBy := rand.Intn(10)
-	incSeqBy := 1
-	seqInfo.proposalNumberToBeGiven.UniqeNumber += incSeqBy
+	incSeqBy := rand.Intn(10)
+	// incSeqBy := 1
+	seqInfo.proposalNumberToBeGiven.UniqeNumber += incSeqBy + 1
 	seqInfo.proposalNumberToBeGiven.Sender = px.me
 	args.ProposalNo = seqInfo.proposalNumberToBeGiven
 	args.MinDone = px.DoneMap[px.me]
@@ -374,9 +375,9 @@ func (px *Paxos) Start(seq int, v interface{}) {
 					seqInfo.proposalNumberToBeGiven = maxValueToRetry
 				}
 				px.stateMap[seq] = seqInfo
+				px.mu.Unlock()
 				r := rand.Intn(100)
 				time.Sleep(time.Duration(r) * time.Microsecond)
-				px.mu.Unlock()
 				go px.Start(seq, v)
 			}
 
@@ -387,9 +388,9 @@ func (px *Paxos) Start(seq int, v interface{}) {
 				seqInfo.proposalNumberToBeGiven = maxValueToRetry
 			}
 			px.stateMap[seq] = seqInfo
+			px.mu.Unlock()
 			r := rand.Intn(100)
 			time.Sleep(time.Duration(r) * time.Microsecond)
-			px.mu.Unlock()
 			go px.Start(seq, v)
 		}
 
@@ -421,7 +422,9 @@ func (px *Paxos) SendDone(args DecisionArgs, peer string, id int) {
 //
 func (px *Paxos) Done(seq int) {
 	// Your code here.
+	px.mu.Lock()
 	px.DoneMap[px.me] = seq + 1
+	px.mu.Unlock()
 
 }
 
@@ -479,6 +482,7 @@ func (px *Paxos) Status(seq int) (bool, interface{}) {
 	// Your code here.
 	px.mu.Lock()
 	if seq < px.minDone {
+		px.mu.Unlock()
 		return false, nil
 	}
 	val, ok := px.stateMap[seq]
@@ -517,7 +521,12 @@ func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
 	px.majority = len(peers) / 2
 	px.stateMap = make(map[int]Info)
 	px.minDone = 0
+	px.max = -1
 	px.DoneMap = make(map[int]int)
+	//Init Done Map
+	for idx, _ := range peers {
+		px.DoneMap[idx] = 0
+	}
 
 	if rpcs != nil {
 		// caller will create socket &c

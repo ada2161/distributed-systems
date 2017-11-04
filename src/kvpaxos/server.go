@@ -50,27 +50,26 @@ type KVPaxos struct {
 }
 
 func (kv *KVPaxos) syncOps(details Op) string {
-	// Need to figure a way of modifying to
+	// Need to figure a way of modifying to so that the rpc count is low and not to slow
 	to := 10 * time.Millisecond
 	kv.mu.Lock()
 	val, ok := kv.answerStore[details.OpId]
 	if ok {
-		fmt.Print("Answer already present")
-		fmt.Println(details.OpId)
 		kv.mu.Unlock()
 		return val
 	}
 	ans := ""
 	for {
-		seq := kv.syncedTill // to = 10 * time.Millisecond
+		seq := kv.syncedTill
 		decided, value := kv.px.Status(seq)
 		if decided {
+			if to > 500*time.Millisecond {
+				to = 500 * time.Millisecond
+			}
 			ans = ""
 			v := value.(Op)
-			fmt.Print("Paxos done for")
-			fmt.Println(kv.syncedTill, seq, v.OpId, kv.kvstore[v.Key])
 			if v.OpType == "Put" {
-				ans = kv.kvstore[v.Key]
+				ans = ""
 				kv.kvstore[v.Key] = v.Value
 			} else if v.OpType == "Put hash" {
 				ans = kv.kvstore[v.Key]
@@ -79,9 +78,7 @@ func (kv *KVPaxos) syncOps(details Op) string {
 			} else if v.OpType == "Get" {
 				ans = kv.kvstore[v.Key]
 			}
-			fmt.Print("Adding to store ")
 			kv.answerStore[v.OpId] = ans
-			fmt.Println(kv.answerStore[v.OpId])
 			if details.OpId == v.OpId {
 				break
 			}
@@ -92,19 +89,16 @@ func (kv *KVPaxos) syncOps(details Op) string {
 
 		} else {
 			details.Seq = seq
-			fmt.Print("Start Paxos For")
-			fmt.Println(details.OpId)
 			kv.px.Start(seq, details)
 			time.Sleep(to)
-			if to < 1*time.Second {
-				to *= 2
+			if to < 10*time.Second {
+				r := /* rand.Intn(2) +*/ 2
+				to *= time.Duration(r)
 			}
 		}
 	}
 	kv.px.Done(kv.syncedTill)
 	kv.syncedTill++
-	fmt.Print("Unlocked")
-	fmt.Println(kv.me)
 	kv.mu.Unlock()
 	return ans
 }
@@ -116,6 +110,14 @@ func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 	operationDetails.Value = ""
 	operationDetails.OpId = args.Nrand
 	reply.Value = kv.syncOps(*operationDetails)
+	if args.Delete != 0 {
+		kv.mu.Lock()
+		_, ok := kv.answerStore[args.Delete]
+		if ok {
+			delete(kv.answerStore, args.Delete)
+		}
+		kv.mu.Unlock()
+	}
 	return nil
 }
 
@@ -132,9 +134,48 @@ func (kv *KVPaxos) Put(args *PutArgs, reply *PutReply) error {
 	operationDetails.Value = args.Value
 	operationDetails.OpId = args.Nrand
 	reply.PreviousValue = kv.syncOps(*operationDetails)
+	if args.Delete != 0 {
+		kv.mu.Lock()
+		_, ok := kv.answerStore[args.Delete]
+		if ok {
+			delete(kv.answerStore, args.Delete)
+		}
+		kv.mu.Unlock()
+	}
 	return nil
 }
 
+/*
+func (kv *KVPaxos) fetchOps() {
+	// Need to figure a way of modifying to so that the rpc count is low and not to slow
+	kv.mu.Lock()
+	ans := ""
+	seq := kv.syncedTill
+	decided, value := kv.px.Status(seq)
+	if decided {
+		ans = ""
+		v := value.(Op)
+		if v.OpType == "Put" {
+			ans = ""
+			kv.kvstore[v.Key] = v.Value
+		} else if v.OpType == "Put hash" {
+			ans = kv.kvstore[v.Key]
+			kv.kvstore[v.Key] = strconv.Itoa(int(hash(ans + v.Value)))
+		} else if v.OpType == "Get" {
+			ans = kv.kvstore[v.Key]
+		}
+		kv.answerStore[v.OpId] = ans
+		kv.px.Done(kv.syncedTill)
+		kv.syncedTill++
+
+	} else {
+		kv.px.Start(seq, nil)
+	}
+	kv.mu.Unlock()
+	to := 1 * time.Second
+	time.Sleep(to)
+}
+*/
 // tell the server to shut itself down.
 // please do not change this function.
 func (kv *KVPaxos) kill() {
@@ -162,6 +203,7 @@ func StartServer(servers []string, me int) *KVPaxos {
 	kv.kvstore = make(map[string]string)
 	kv.answerStore = make(map[int64]string)
 	kv.syncedTill = 0
+	// go kv.fetchOps()
 
 	rpcs := rpc.NewServer()
 	rpcs.Register(kv)

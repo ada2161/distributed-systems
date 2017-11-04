@@ -19,12 +19,14 @@ func nrand() int64 {
 type Clerk struct {
 	servers []string
 	// You will have to modify this struct.
+	deleteOP int64 //This is used to remove the succesful operations from the cache
 }
 
 func MakeClerk(servers []string) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
 	// You'll have to add code here.
+	ck.deleteOP = 0
 	return ck
 }
 
@@ -71,27 +73,23 @@ func (ck *Clerk) Get(key string) string {
 	var args GetArgs
 	args.Key = key
 	args.Nrand = nrand()
-	to := 10 * time.Millisecond
-	fmt.Print("Trying get with id")
-	fmt.Print(args.Nrand)
-	fmt.Print(" On Server ")
-	fmt.Println(ck.servers[0])
+	r := 500
+	to := time.Duration(r) * time.Millisecond
+	args.Delete = ck.deleteOP
 
 	for {
 		k := mrand.Intn(len(ck.servers))
-		for k < len(ck.servers) {
-			// k = 0
-			var reply GetReply
-			ok := call(ck.servers[k], "KVPaxos.Get", args, &reply)
-			if ok {
-				return reply.Value
-			}
-			if to < 10*time.Second {
-				to *= 2
-			}
-
+		var reply GetReply
+		ok := call(ck.servers[k], "KVPaxos.Get", args, &reply)
+		if ok {
+			ck.deleteOP = args.Nrand
+			return reply.Value
 		}
-		k++
+		time.Sleep(to)
+		// if to < 10*time.Second {
+		// 	to *= 2
+		// }
+
 	}
 }
 
@@ -106,32 +104,23 @@ func (ck *Clerk) PutExt(key string, value string, dohash bool) string {
 	args.Value = value
 	args.DoHash = dohash
 	args.Nrand = nrand()
-	fmt.Print("Trying puthash with id")
-	fmt.Print(args.Nrand)
-	fmt.Print(" On Server ")
-	fmt.Println(ck.servers[0])
+	args.Delete = ck.deleteOP
+	r := 500
+	to := time.Duration(r) * time.Millisecond
 
-	to := 10 * time.Millisecond
 	for {
 		k := mrand.Intn(len(ck.servers))
-		for k < len(ck.servers) {
-			// k = 0
-			var reply PutReply
-			ok := call(ck.servers[k], "KVPaxos.Put", args, &reply)
-			if ok {
-				fmt.Print("Found ans for")
-				fmt.Println(args.Nrand)
-				return reply.PreviousValue
-			} else {
-				fmt.Print("Retrying with id")
-				fmt.Println(args.Nrand)
-			}
-			if to < 10*time.Second {
-				to *= 2
-			}
-
-			k++
+		var reply PutReply
+		ok := call(ck.servers[k], "KVPaxos.Put", args, &reply)
+		if ok {
+			ck.deleteOP = args.Nrand
+			return reply.PreviousValue
 		}
+		time.Sleep(to)
+		// if to < 10*time.Second {
+		// 	to *= 2
+		// }
+
 	}
 	return ""
 }
