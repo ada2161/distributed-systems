@@ -73,7 +73,7 @@ func (ck *Clerk) Get(key string) string {
 	var args GetArgs
 	args.Key = key
 	args.Nrand = nrand()
-	r := 500
+	r := 100
 	to := time.Duration(r) * time.Millisecond
 	args.Delete = ck.deleteOP
 
@@ -105,7 +105,7 @@ func (ck *Clerk) PutExt(key string, value string, dohash bool) string {
 	args.DoHash = dohash
 	args.Nrand = nrand()
 	args.Delete = ck.deleteOP
-	r := 500
+	r := 100
 	to := time.Duration(r) * time.Millisecond
 
 	for {

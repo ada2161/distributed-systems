@@ -63,8 +63,8 @@ func (kv *KVPaxos) syncOps(details Op) string {
 		seq := kv.syncedTill
 		decided, value := kv.px.Status(seq)
 		if decided {
-			if to > 500*time.Millisecond {
-				to = 500 * time.Millisecond
+			if to > 1*time.Second {
+				to = 1 * time.Second
 			}
 			ans = ""
 			v := value.(Op)
@@ -89,12 +89,14 @@ func (kv *KVPaxos) syncOps(details Op) string {
 
 		} else {
 			details.Seq = seq
+			// kv.mu.Unlock()
 			kv.px.Start(seq, details)
 			time.Sleep(to)
-			if to < 10*time.Second {
+			if to < 20*time.Second {
 				r := /* rand.Intn(2) +*/ 2
 				to *= time.Duration(r)
 			}
+			// kv.mu.Lock()
 		}
 	}
 	kv.px.Done(kv.syncedTill)

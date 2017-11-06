@@ -224,6 +224,8 @@ func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) error {
 		seqInfo.DecidedValue = nil
 	}
 	if isGreater(args.AcceptNo, seqInfo.highestNumberSeen) {
+		seqInfo.highestNumberSeen = args.AcceptNo
+		seqInfo.proposalNumberToBeGiven = args.AcceptNo
 		seqInfo.highestNumberAccepted = args.AcceptNo
 		seqInfo.valueOfHighestAccepted = args.AcceptValue
 		px.stateMap[args.AcceptSeq] = seqInfo
