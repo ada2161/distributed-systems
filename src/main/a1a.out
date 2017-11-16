@@ -1,0 +1,91 @@
+assignments-ada2161
+Split kjv12.txt
+DoMap: read split mrtmp.kjv12.txt-0 966967
+3
+Created mrtmp.kjv12.txt-0-0 
+Created mrtmp.kjv12.txt-0-1 
+Created mrtmp.kjv12.txt-0-2 
+DoMap: read split mrtmp.kjv12.txt-1 966941
+3
+Created mrtmp.kjv12.txt-1-0 
+Created mrtmp.kjv12.txt-1-1 
+Created mrtmp.kjv12.txt-1-2 
+DoMap: read split mrtmp.kjv12.txt-2 966974
+3
+Created mrtmp.kjv12.txt-2-0 
+Created mrtmp.kjv12.txt-2-1 
+Created mrtmp.kjv12.txt-2-2 
+DoMap: read split mrtmp.kjv12.txt-3 966970
+3
+Created mrtmp.kjv12.txt-3-0 
+Created mrtmp.kjv12.txt-3-1 
+Created mrtmp.kjv12.txt-3-2 
+DoMap: read split mrtmp.kjv12.txt-4 966905
+3
+Created mrtmp.kjv12.txt-4-0 
+Created mrtmp.kjv12.txt-4-1 
+Created mrtmp.kjv12.txt-4-2 
+DoReduce: read mrtmp.kjv12.txt-0-0
+DoReduce: read mrtmp.kjv12.txt-1-0
+DoReduce: read mrtmp.kjv12.txt-2-0
+DoReduce: read mrtmp.kjv12.txt-3-0
+DoReduce: read mrtmp.kjv12.txt-4-0
+DoReduce: read mrtmp.kjv12.txt-0-1
+DoReduce: read mrtmp.kjv12.txt-1-1
+DoReduce: read mrtmp.kjv12.txt-2-1
+DoReduce: read mrtmp.kjv12.txt-3-1
+DoReduce: read mrtmp.kjv12.txt-4-1
+DoReduce: read mrtmp.kjv12.txt-0-2
+DoReduce: read mrtmp.kjv12.txt-1-2
+DoReduce: read mrtmp.kjv12.txt-2-2
+DoReduce: read mrtmp.kjv12.txt-3-2
+DoReduce: read mrtmp.kjv12.txt-4-2
+Merge: read mrtmp.kjv12.txt-res-0
+Merge: read mrtmp.kjv12.txt-res-1
+Merge: read mrtmp.kjv12.txt-res-2
+Passed test
+Split kjv12.txt
+DoMap: read split mrtmp.kjv12.txt-0 966967
+3
+Created mrtmp.kjv12.txt-0-0 
+Created mrtmp.kjv12.txt-0-1 
+Created mrtmp.kjv12.txt-0-2 
+DoMap: read split mrtmp.kjv12.txt-1 966941
+3
+Created mrtmp.kjv12.txt-1-0 
+Created mrtmp.kjv12.txt-1-1 
+Created mrtmp.kjv12.txt-1-2 
+DoMap: read split mrtmp.kjv12.txt-2 966974
+3
+Created mrtmp.kjv12.txt-2-0 
+Created mrtmp.kjv12.txt-2-1 
+Created mrtmp.kjv12.txt-2-2 
+DoMap: read split mrtmp.kjv12.txt-3 966970
+3
+Created mrtmp.kjv12.txt-3-0 
+Created mrtmp.kjv12.txt-3-1 
+Created mrtmp.kjv12.txt-3-2 
+DoMap: read split mrtmp.kjv12.txt-4 966905
+3
+Created mrtmp.kjv12.txt-4-0 
+Created mrtmp.kjv12.txt-4-1 
+Created mrtmp.kjv12.txt-4-2 
+DoReduce: read mrtmp.kjv12.txt-0-0
+DoReduce: read mrtmp.kjv12.txt-1-0
+DoReduce: read mrtmp.kjv12.txt-2-0
+DoReduce: read mrtmp.kjv12.txt-3-0
+DoReduce: read mrtmp.kjv12.txt-4-0
+DoReduce: read mrtmp.kjv12.txt-0-1
+DoReduce: read mrtmp.kjv12.txt-1-1
+DoReduce: read mrtmp.kjv12.txt-2-1
+DoReduce: read mrtmp.kjv12.txt-3-1
+DoReduce: read mrtmp.kjv12.txt-4-1
+DoReduce: read mrtmp.kjv12.txt-0-2
+DoReduce: read mrtmp.kjv12.txt-1-2
+DoReduce: read mrtmp.kjv12.txt-2-2
+DoReduce: read mrtmp.kjv12.txt-3-2
+DoReduce: read mrtmp.kjv12.txt-4-2
+Merge: read mrtmp.kjv12.txt-res-0
+Merge: read mrtmp.kjv12.txt-res-1
+Merge: read mrtmp.kjv12.txt-res-2
+Passed test
