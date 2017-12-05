@@ -1,6 +1,9 @@
 package shardkv
 
-import "hash/fnv"
+import (
+	"hash/fnv"
+	"shardmaster"
+)
 
 //
 // Sharded key/value server.
@@ -49,4 +52,18 @@ func hash(s string) uint32 {
 	h := fnv.New32a()
 	h.Write([]byte(s))
 	return h.Sum32()
+}
+
+// You'll have to add definitions here.
+type SendArgs struct {
+	Map          [shardmaster.NShards]map[string]string
+	ShardsToCopy []int
+	Num          int
+	Nrand        int64
+	AnswerMap    map[int64]string
+}
+
+type SendReply struct {
+	Err   Err
+	Value string
 }

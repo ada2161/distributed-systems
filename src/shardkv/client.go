@@ -92,6 +92,8 @@ func (ck *Clerk) Get(key string) string {
 
 	for {
 		shard := key2shard(key)
+		// fmt.Println("GET")
+		// fmt.Println(key, shard, ck.config)
 
 		gid := ck.config.Shards[shard]
 
@@ -131,6 +133,8 @@ func (ck *Clerk) PutExt(key string, value string, dohash bool) string {
 
 	for {
 		shard := key2shard(key)
+		// fmt.Println("PUT")
+		// fmt.Println(key, value, shard, ck.config)
 
 		gid := ck.config.Shards[shard]
 

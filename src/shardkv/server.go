@@ -15,7 +15,6 @@ import (
 	"syscall"
 	"time"
 	//To compare maps
-	"reflect"
 )
 
 const Debug = 0
@@ -29,12 +28,18 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 
 type Op struct {
 	// Your definitions here.
-	Seq       int
-	OpType    string
-	Key       string
-	Value     string
-	OpId      int64
-	NewConfig map[int]bool
+	Seq          int
+	OpType       string
+	Key          string
+	Value        string
+	OpId         int64
+	NewConfig    [shardmaster.NShards]bool
+	SendShardsTo map[int64][]int
+	Num          int
+	Map          [shardmaster.NShards]map[string]string
+	ShardsToCopy []int
+	AnswerMap    map[int64]string          //This stores the answers to pass unreliable
+	Stale        [shardmaster.NShards]bool //Data is stale, do not use
 }
 
 type ShardKV struct {
@@ -50,18 +55,24 @@ type ShardKV struct {
 
 	// Your definitions here.
 	syncedTill  int //This is the sequence number till which the kv store is up to date
-	kvstore     [10]map[string]string
+	kvstore     [shardmaster.NShards]map[string]string
 	answerStore map[int64]string //This stores the answers to pass unreliable
-	curKeys     map[int]bool
+	curKeys     [shardmaster.NShards]bool
+	Groups      map[int64][]string
+	new         bool                      //To keep track of newly added server
+	stale       [shardmaster.NShards]bool //Data is stale, do not use
+	Num         int
+
+	KnownConfig int
 }
 
 func (kv *ShardKV) syncOps(details Op) string {
 	// Need to figure a way of modifying to so that the rpc count is low and not to slow
 	to := 10 * time.Millisecond
-	kv.mu.Lock()
+	// kv.mu.Lock()
 	val, ok := kv.answerStore[details.OpId]
 	if ok {
-		kv.mu.Unlock()
+		// kv.mu.Unlock()
 		return val
 	}
 	ans := ""
@@ -74,32 +85,71 @@ func (kv *ShardKV) syncOps(details Op) string {
 			}
 			v := value.(Op)
 			ans = ""
-			if v.OpType == "Config" {
-				// Handle send the kv store to others
-				for new_keys, _ := range v.NewConfig {
-					if _, ok := kv.curKeys[new_keys]; !ok {
-						kv.getkv(new_keys)
+			if v.OpType == "Recieve" {
+				for anskey, ansvalue := range v.AnswerMap {
+					kv.answerStore[anskey] = ansvalue
+				}
+				kv.answerStore[v.OpId] = ans
+				for _, shard := range v.ShardsToCopy {
+					kv.kvstore[shard] = v.Map[shard]
+					kv.stale[shard] = false
+				}
+				if details.OpType == "Get" ||
+					details.OpType == "Put hash" || details.OpType == "Put" {
+					shard := key2shard(details.Key)
+					if kv.stale[shard] == true {
+						return "KeySent"
 					}
 				}
+			} else if v.OpType == "Config" {
+				// Handle send the kv store to others
+				kv.answerStore[v.OpId] = ans
+				if kv.Num < v.Num {
+					kv.sendShards(v.SendShardsTo, v.Num, v.OpId)
+					kv.curKeys = v.NewConfig
+					kv.Num = v.Num
+					for i := 0; i < shardmaster.NShards; i++ {
+						if kv.stale[i] == false && v.Stale[i] == false {
+							kv.stale[i] = false
+						} else {
+							kv.stale[i] = true
+						}
+					}
 
-				kv.curKeys = v.NewConfig
+				}
 
 				// Handle send key error if the config does not have the keys
 
 			} else if v.OpType == "Put" {
 				shard := key2shard(v.Key)
 				ans = ""
-				kv.kvstore[shard][v.Key] = v.Value
+				if kv.curKeys[shard] == true || kv.stale[shard] == false {
+					kv.kvstore[shard][v.Key] = v.Value
+				} else {
+					ans = "KeySent"
+				}
 			} else if v.OpType == "Put hash" {
 				shard := key2shard(v.Key)
-				ans = kv.kvstore[shard][v.Key]
-				kv.kvstore[shard][v.Key] = strconv.Itoa(int(hash(ans + v.Value)))
-				// kv.kvstore[v.Key] = hash(ans + v.Value)
+				if kv.curKeys[shard] == true || kv.stale[shard] == false {
+					ans = kv.kvstore[shard][v.Key]
+					// t, _ := strconv.Atoi(ans + v.Value)
+					// kv.kvstore[shard][v.Key] = strconv.Itoa(int(t))
+					kv.kvstore[shard][v.Key] = strconv.Itoa(int(hash(ans + v.Value)))
+				} else {
+					ans = "KeySent"
+				}
 			} else if v.OpType == "Get" {
 				shard := key2shard(v.Key)
-				ans = kv.kvstore[shard][v.Key]
+				if kv.curKeys[shard] == true || kv.stale[shard] == false {
+					ans = kv.kvstore[shard][v.Key]
+					// return "KeySent"
+				} else {
+					ans = "KeySent"
+				}
 			}
-			kv.answerStore[v.OpId] = ans
+			if ans != "KeySent" {
+				kv.answerStore[v.OpId] = ans
+			}
 			if details.OpId == v.OpId {
 				break
 			}
@@ -114,30 +164,89 @@ func (kv *ShardKV) syncOps(details Op) string {
 			kv.px.Start(seq, details)
 			time.Sleep(to)
 			if to < 10*time.Second {
-				r := /* rand.Intn(2) +*/ 2
-				to *= time.Duration(r)
+				to *= time.Duration(2)
 			}
 			// kv.mu.Lock()
 		}
 	}
-	kv.px.Done(kv.syncedTill)
+	// kv.px.Done(kv.syncedTill)
 	kv.syncedTill++
-	kv.mu.Unlock()
+	// kv.mu.Unlock()
 	return ans
 }
 
-func (kv *ShardKV) getkv(key int) {
+func (kv *ShardKV) sendShards(shardsToSend map[int64][]int, Num int, operationId int64) {
+	for gid, shards := range shardsToSend {
+		go func(shards []int, gid int64) {
+			kv.mu.Lock()
+			args := &SendArgs{}
+			// args.Map = kv.kvstore
+			for s := 0; s < shardmaster.NShards; s++ {
+				args.Map[s] = make(map[string]string)
+				for k, v := range kv.kvstore[s] {
+					args.Map[s][k] = v
+				}
 
+			}
+			args.ShardsToCopy = shards
+			args.Num = Num
+			args.Nrand = operationId
+			// args.AnswerMap = kv.answerStore
+			args.AnswerMap = make(map[int64]string)
+			for k, v := range kv.answerStore {
+				args.AnswerMap[k] = v
+			}
+
+			kv.mu.Unlock()
+			for {
+				var reply GetReply
+				ok := false
+				for _, server := range kv.Groups[gid] {
+
+					ok = call(server, "ShardKV.RecieveShards", args, &reply)
+				}
+				if ok && (reply.Err == OK) {
+					break
+				}
+				if ok && (reply.Err == ErrWrongGroup) {
+					break
+				}
+			}
+		}(shards, gid)
+
+	}
+}
+
+func (kv *ShardKV) RecieveShards(args *SendArgs, reply *SendReply) error {
+	//Chane this to ==?
+	if kv.Num > args.Num {
+		reply.Err = OK
+		return nil
+	}
+	operationDetails := new(Op)
+	operationDetails.Map = args.Map
+	operationDetails.OpType = "Recieve"
+	operationDetails.ShardsToCopy = args.ShardsToCopy
+	operationDetails.OpId = args.Nrand
+	operationDetails.Num = args.Num
+	operationDetails.AnswerMap = args.AnswerMap
+	kv.mu.Lock()
+	kv.syncOps(*operationDetails)
+	kv.mu.Unlock()
+	reply.Err = OK
+	return nil
 }
 
 func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) error {
 	// Your code here.
-	// shard := key2shard(args.Key)
-	// servingKey, _ := kv.curKeys[shard]
-	// if servingKey == false {
-	// 	reply.Err = ErrWrongGroup
-	// 	return nil
-	// }
+	kv.mu.Lock()
+	shard := key2shard(args.Key)
+	servingKey := kv.curKeys[shard]
+	if servingKey == false || kv.stale[shard] == true {
+		reply.Err = ErrWrongGroup
+		kv.mu.Unlock()
+		return nil
+	}
 	operationDetails := new(Op)
 	operationDetails.OpType = "Get"
 	operationDetails.Key = args.Key
@@ -145,6 +254,13 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) error {
 	operationDetails.OpId = args.Nrand
 	reply.Value = kv.syncOps(*operationDetails)
 	reply.Err = OK
+	kv.mu.Unlock()
+	if reply.Value == "KeySent" {
+
+		reply.Err = ErrWrongGroup
+	}
+	if reply.Value == "" {
+	}
 	// if args.Delete != 0 {
 	// kv.mu.Lock()
 	// _, ok := kv.answerStore[args.Delete]
@@ -157,13 +273,15 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) error {
 }
 
 func (kv *ShardKV) Put(args *PutArgs, reply *PutReply) error {
-	// Your code here.
-	// shard := key2shard(args.Key)
-	// servingKey, _ := kv.curKeys[shard]
-	// if servingKey == false {
-	// 	reply.Err = ErrWrongGroup
-	// 	return nil
-	// }
+	// Yournn code here.
+	kv.mu.Lock()
+	shard := key2shard(args.Key)
+	servingKey := kv.curKeys[shard]
+	if servingKey == false || kv.stale[shard] == true {
+		reply.Err = ErrWrongGroup
+		kv.mu.Unlock()
+		return nil
+	}
 	operationDetails := new(Op)
 	if args.DoHash == false {
 		operationDetails.OpType = "Put"
@@ -174,7 +292,13 @@ func (kv *ShardKV) Put(args *PutArgs, reply *PutReply) error {
 	operationDetails.Value = args.Value
 	operationDetails.OpId = args.Nrand
 	reply.PreviousValue = kv.syncOps(*operationDetails)
+	kv.mu.Unlock()
 	reply.Err = OK
+	if reply.PreviousValue == "" {
+	}
+	if reply.PreviousValue == "KeySent" {
+		reply.Err = ErrWrongGroup
+	}
 	// if args.Delete != 0 {
 	// 	kv.mu.Lock()
 	// 	_, ok := kv.answerStore[args.Delete]
@@ -191,29 +315,50 @@ func (kv *ShardKV) Put(args *PutArgs, reply *PutReply) error {
 // if so, re-configure.
 //
 func (kv *ShardKV) tick() {
+	var new_config [shardmaster.NShards]bool
+	shards_to_send := make(map[int64][]int)
+	config := kv.sm.Query(kv.KnownConfig)
+	var stale [shardmaster.NShards]bool
+	kv.KnownConfig += 1
+	kv.mu.Lock()
+	if config.Num == 1 && config.Shards[0] == kv.gid {
+		for k := 0; k < shardmaster.NShards; k++ {
+			kv.stale[k] = false
+			kv.curKeys[k] = true
+		}
+	}
+	kv.Groups = config.Groups
 
-	// One problem with the implementation is that there will be several config changes
-	// even the new config is known about, we can create an additional map to store this info
-	// kv.curKeys =
-	new_config := make(map[int]bool)
-	config := kv.sm.Query(-1)
 	for k, v := range config.Shards {
+		// if config.Num < 2 {
+		// 	break
+		// }
 		if v == kv.gid {
 			new_config[k] = true
+			// if kv.curKeys[k] == false {
+			// 	kv.stale[k] = true
+			// }
+		} else {
+			new_config[k] = false
+			stale[k] = true
+
+			if kv.curKeys[k] == true {
+				shards_to_send[v] = append(shards_to_send[v], k)
+			}
 		}
 
 	}
-	kv.mu.Lock()
-	// Are the maps equal, if no change config
-	eq := reflect.DeepEqual(new_config, kv.curKeys)
-	kv.mu.Unlock()
-	if eq == false {
+	if config.Num >= kv.Num {
 		operationDetails := new(Op)
+		operationDetails.SendShardsTo = shards_to_send
 		operationDetails.OpType = "Config"
 		operationDetails.OpId = nrand()
+		operationDetails.Num = config.Num
 		operationDetails.NewConfig = new_config
+		operationDetails.Stale = stale
 		kv.syncOps(*operationDetails)
 	}
+	kv.mu.Unlock()
 }
 
 // tell the server to shut itself down.
@@ -240,15 +385,20 @@ func StartServer(gid int64, shardmasters []string,
 	kv.me = me
 	kv.gid = gid
 	kv.sm = shardmaster.MakeClerk(shardmasters)
-
 	// Your initialization code here.
 	// Don't call Join().
-	for k := 0; k < 10; k++ {
+	for k := 0; k < shardmaster.NShards; k++ {
 		kv.kvstore[k] = make(map[string]string)
+		kv.stale[k] = true
 	}
 	kv.answerStore = make(map[int64]string)
-	kv.curKeys = make(map[int]bool)
+	kv.Groups = make(map[int64][]string)
+	// kv.curKeys = make(map[int]bool)
 	kv.syncedTill = 0
+	kv.new = true
+	kv.KnownConfig = 0
+	kv.Num = -1
+	// kv.stale = true
 
 	rpcs := rpc.NewServer()
 	rpcs.Register(kv)

@@ -25,7 +25,7 @@ type ShardMaster struct {
 	px         *paxos.Paxos
 
 	configs []Config // indexed by config num
-	// max_seq int
+	max_seq int
 }
 
 type Op struct {
@@ -113,7 +113,7 @@ func (sm *ShardMaster) syncOps(new_Op Op) {
 
 	for {
 		cur_config := sm.configs[len(sm.configs)-1]
-		seq := len(sm.configs) - 1
+		seq := sm.max_seq
 		decided, value := sm.px.Status(seq)
 		if decided {
 			v := value.(Op)
@@ -142,15 +142,14 @@ func (sm *ShardMaster) syncOps(new_Op Op) {
 				new_config.Shards[v.Shard_no] = v.GID
 				sm.configs = append(sm.configs, new_config)
 			} else if v.OpType == "Query" {
-				sm.configs = append(sm.configs, new_config)
+				// sm.configs = append(sm.configs, new_config)
 			}
 			if new_Op.OpID == v.OpID {
-				sm.px.Done(seq)
 				break
 			}
 
 			// kv.px.Done(seq)
-			// sm.max_seq++
+			sm.max_seq++
 
 		} else {
 			sm.px.Start(seq, new_Op)
@@ -161,7 +160,8 @@ func (sm *ShardMaster) syncOps(new_Op Op) {
 			}
 		}
 	}
-	// sm.max_seq++
+	sm.px.Done(sm.max_seq)
+	sm.max_seq++
 	sm.mu.Unlock()
 	return
 }
@@ -254,7 +254,7 @@ func StartServer(servers []string, me int) *ShardMaster {
 
 	sm.configs = make([]Config, 1)
 	sm.configs[0].Groups = map[int64][]string{}
-	// sm.max_seq = 0
+	sm.max_seq = 0
 
 	rpcs := rpc.NewServer()
 	rpcs.Register(sm)
